@@ -69,6 +69,7 @@ public class QrMobileVisionPlugin: NSObject, FlutterPlugin {
       } catch {
         result(FlutterError(code: "PERMISSION_DENIED", message: "QrReader initialization threw an exception", details: error.localizedDescription))
       }
+      reader?.setZoom()
     case "stop":
       reader?.stop();
       reader = nil

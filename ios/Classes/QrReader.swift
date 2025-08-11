@@ -133,7 +133,7 @@ class QrReader: NSObject {
   var pixelBuffer : CVPixelBuffer?
   let barcodeDetector: BarcodeScanner
   let qrCallback: (_:String) -> Void
-  
+  var selectedZoom: CGFloat = 2;
   
   
   init(targetWidth: Int, targetHeight: Int, direction: QrCameraDirection, textureRegistry: FlutterTextureRegistry, options: BarcodeScannerOptions, qrCallback: @escaping (_:String) -> Void) throws {
@@ -151,6 +151,7 @@ class QrReader: NSObject {
     
     if #available(iOS 13.0, *) {
         captureDevice = AVCaptureDevice.default(AVCaptureDevice.DeviceType.builtInTripleCamera, for: AVMediaType.video, position: cameraPosition)
+        selectedZoom = 3
     }
     
     if captureDevice == nil {
@@ -188,6 +189,22 @@ class QrReader: NSObject {
     captureSession.addOutput(output)
   }
   
+  func setZoom(){
+    do {
+      try captureDevice.lockForConfiguration()
+      // Check valid zoom value
+      let maxZoomFactor = captureDevice.activeFormat.videoMaxZoomFactor
+      let zoomFactor: CGFloat = selectedZoom           
+      if zoomFactor <= maxZoomFactor && zoomFactor >= 1.0 {
+          captureDevice.videoZoomFactor = zoomFactor
+      } else {
+          print("Zoom factor \(zoomFactor) is out of range (1.0 - \(maxZoomFactor)).")
+      }
+      captureDevice.unlockForConfiguration()
+    } catch {
+      print("Unable to lock device configuration: \(error)")
+    }
+  }
   
   func toggleTorch(on: Bool) {
     guard

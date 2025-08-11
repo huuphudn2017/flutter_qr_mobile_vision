@@ -30,6 +30,7 @@ import android.util.SparseIntArray;
 import android.view.Display;
 import android.view.Surface;
 import android.view.WindowManager;
+import android.graphics.Rect;
 
 import androidx.annotation.NonNull;
 
@@ -72,6 +73,8 @@ class QrCamera {
   private CameraDevice cameraDevice;
   private CameraCharacteristics cameraCharacteristics;
   private Frame latestFrame;
+  private float maxZoom;
+  private Rect activeArraySize;
 
   QrCamera(int width, int height, SurfaceTexture texture, Context context, QrDetector detector) {
     this.targetWidth = width;
@@ -148,15 +151,32 @@ class QrCamera {
     }
 
     String cameraId = null;
+    String subCameraId = null;
     try {
       String[] cameraIdList = manager.getCameraIdList();
+      float maxFocalLength = 0.0f;
       for (String id : cameraIdList) {
         CameraCharacteristics cameraCharacteristics = manager.getCameraCharacteristics(id);
+        maxZoom = cameraCharacteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+        activeArraySize = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
         Integer integer = cameraCharacteristics.get(CameraCharacteristics.LENS_FACING);
         if (integer != null && integer == (cameraDirection == 0 ? LENS_FACING_FRONT : LENS_FACING_BACK)) {
-          cameraId = id;
+          float[] focalLengths = cameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+          if (focalLengths != null) {
+            for (float focalLength : focalLengths) {
+              if (focalLength > maxFocalLength) {
+                maxFocalLength = focalLength;
+                cameraId = id;
+              }
+            }
+          } else  {
+            subCameraId = id;
+          }
           break;
         }
+      }
+      if(cameraId == null){
+        cameraId = subCameraId;
       }
     } catch (CameraAccessException e) {
       Log.w(TAG, "Error getting back camera.", e);
@@ -203,6 +223,27 @@ class QrCamera {
       }, null);
     } catch (CameraAccessException e) {
       Log.w(TAG, "Error getting camera configuration.", e);
+    }
+  }
+
+  private void setZoom(float zoomLevel) {
+    if (zoomLevel < 1.0f) {
+        zoomLevel = 1.0f;
+    } else if (zoomLevel > maxZoom) {
+        zoomLevel = maxZoom;
+    }
+    int cropW = (int) (activeArraySize.width() / zoomLevel);
+    int cropH = (int) (activeArraySize.height() / zoomLevel);
+    int cropX = (activeArraySize.width() - cropW) / 2;
+    int cropY = (activeArraySize.height() - cropH) / 2;
+    Rect zoomRect = new Rect(cropX, cropY, cropX + cropW, cropY + cropH);
+
+    previewBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoomRect);
+
+    try {
+        previewSession.setRepeatingRequest(previewBuilder.build(), null, null);
+    } catch (CameraAccessException e) {
+        e.printStackTrace();
     }
   }
 
@@ -363,6 +404,7 @@ class QrCamera {
 
     try {
       previewSession.setRepeatingRequest(previewBuilder.build(), listener, null);
+      setZoom(2);
     } catch (Exception e) {
       e.printStackTrace();
     }
